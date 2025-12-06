@@ -80,9 +80,9 @@ const NotificationDropdown = ({ userId, onSwitchTab }) => {
         className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors text-gray-600 dark:text-gray-300"
       >
         {unreadCount > 0 ? (
-          <MdNotifications className="w-6 h-6 text-blue-600" />
+          <MdNotifications className="w-8 h-8 text-blue-600" />
         ) : (
-          <MdNotificationsNone className="w-6 h-6" />
+          <MdNotificationsNone className="w-8 h-8" />
         )}
         {unreadCount > 0 && (
           <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900"></span>

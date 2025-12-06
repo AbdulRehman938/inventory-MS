@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { MdLogout, MdPerson } from "react-icons/md";
+import { MdLogout, MdPerson, MdFormatQuote } from "react-icons/md";
 import { toast } from "react-toastify";
 import RoleSwitcher from "../components/RoleSwitcher";
 import ProfileModal from "../components/ProfileModal";
@@ -16,6 +16,11 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showBiodataModal, setShowBiodataModal] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [userName, setUserName] = useState("User");
+  const [userEmail, setUserEmail] = useState("");
+  const [userLocation, setUserLocation] = useState("");
+  const [quote, setQuote] = useState("");
+  const [requestsHighlightId, setRequestsHighlightId] = useState(null);
 
   const navigate = useNavigate();
   const userId = localStorage.getItem("userId");
@@ -24,9 +29,6 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   const ActiveComponent =
     activeItem?.component || (() => <div className="p-4">Page Not Found</div>);
 
-  // State for highlighting specific items (e.g. biodata requests)
-  const [requestsHighlightId, setRequestsHighlightId] = useState(null);
-
   const handleSwitchTab = (tabId, highlightId = null) => {
     setActiveTabId(tabId);
     if (highlightId) {
@@ -34,7 +36,19 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
     }
   };
 
-  // ... (applyTheme and useEffects remain unchanged)
+  const quotes = [
+    "Quality means doing it right when no one is looking.",
+    "The only way to do great work is to love what you do.",
+    "Success is the sum of small efforts, repeated day in and day out.",
+    "Productivity is never an accident. It is always the result of a commitment to excellence.",
+    "Your limitation—it's only your imagination.",
+    "Inventory is money sitting around in another form.",
+    "Great things never come from comfort zones.",
+    "Efficiency is doing things right; effectiveness is doing the right things.",
+    "The secret of getting ahead is getting started.",
+    "Focus on being productive instead of busy.",
+    "Organization isn't about perfection; it's about efficiency.",
+  ];
 
   // Helper to apply theme
   const applyTheme = (theme) => {
@@ -55,6 +69,18 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
       document.body.classList.add(`theme-${currentTheme}`);
     }
   };
+
+  useEffect(() => {
+    // Initial random quote
+    setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
+
+    // Rotate quote every 60 seconds
+    const interval = setInterval(() => {
+      setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     // 1. Load theme on mount from LocalStorage first for speed
@@ -80,6 +106,9 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
           if (dbData.avatar_url && dbData.avatar_url !== avatarUrl) {
             setAvatarUrl(dbData.avatar_url);
           }
+          if (dbData.full_name) setUserName(dbData.full_name);
+          if (dbData.email) setUserEmail(dbData.email);
+          if (dbData.location) setUserLocation(dbData.location);
 
           // Sync Theme from DB
           if (dbData.theme) {
@@ -124,11 +153,12 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   }, [userId]);
 
   const handleProfileUpdate = () => {
-    // Refresh Avatar
+    // Refresh Avatar and User Info
     const extras = JSON.parse(
       localStorage.getItem(`user_extras_${userId}`) || "{}"
     );
     if (extras.avatarUrl) setAvatarUrl(extras.avatarUrl);
+    if (extras.fullName) setUserName(extras.fullName);
 
     // Refresh Theme
     const savedTheme = localStorage.getItem("theme");
@@ -219,11 +249,25 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
       {/* Main Layout Area */}
       <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-slate-800 transition-colors duration-300">
         {/* Header */}
-        <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 h-20 flex items-center justify-between px-8 z-10 sticky top-0 transition-colors duration-300">
+        <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 h-24 flex items-center justify-between px-8 z-10 sticky top-0 transition-colors duration-300 relative">
           <div className="flex items-center">
-            <h2 className="text-xl font-bold text-gray-800 dark:text-white transition-colors">
+            <h2 className="text-3xl font-bold text-gray-800 dark:text-white transition-colors tracking-tight">
               {activeItem?.label}
             </h2>
+          </div>
+
+          {/* Centered Location and Quotes Section */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center w-1/3">
+            <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-2 uppercase tracking-wider">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse ring-2 ring-green-100 dark:ring-green-900"></span>
+              {userLocation || "IMS Headquarters"}
+            </div>
+
+            <div className="flex items-center gap-2 text-lg font-medium text-gray-800 dark:text-white italic max-w-full text-center animate-fadeIn key={quote}">
+              <MdFormatQuote className="text-blue-500 w-6 h-6 shrink-0 transform rotate-180 opacity-50" />
+              <span className="truncate">{quote}</span>
+              <MdFormatQuote className="text-blue-500 w-6 h-6 shrink-0 opacity-50" />
+            </div>
           </div>
 
           <div className="flex items-center gap-4">
@@ -239,12 +283,9 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
             {/* Profile Button */}
             <button
               onClick={() => setShowProfileModal(true)}
-              className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-slate-800 p-1.5 rounded-full pl-3 transition-all group"
+              className="flex items-center gap-4 hover:bg-gray-100 dark:hover:bg-slate-800 p-2 rounded-xl transition-all group max-w-sm"
             >
-              <span className="text-sm font-bold text-gray-700 dark:text-gray-200 transition-colors profile-btn-text">
-                Profile
-              </span>
-              <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden ring-2 ring-transparent group-hover:ring-blue-500 transition-all">
+              <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden ring-2 ring-transparent group-hover:ring-blue-500 transition-all shrink-0">
                 {avatarUrl ? (
                   <img
                     src={avatarUrl}
@@ -253,9 +294,18 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
-                    <MdPerson className="w-5 h-5" />
+                    <MdPerson className="w-8 h-8" />
                   </div>
                 )}
+              </div>
+
+              <div className="text-left hidden sm:block">
+                <div className="text-base font-bold text-gray-800 dark:text-white leading-tight truncate max-w-[180px]">
+                  {userName}
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[180px]">
+                  {userEmail}
+                </div>
               </div>
             </button>
           </div>
