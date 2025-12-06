@@ -123,6 +123,21 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
     };
   }, [userId]);
 
+  const handleProfileUpdate = () => {
+    // Refresh Avatar
+    const extras = JSON.parse(
+      localStorage.getItem(`user_extras_${userId}`) || "{}"
+    );
+    if (extras.avatarUrl) setAvatarUrl(extras.avatarUrl);
+
+    // Refresh Theme
+    const savedTheme = localStorage.getItem("theme");
+    applyTheme(savedTheme);
+
+    // Close Modal
+    setShowProfileModal(false);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("isAuthenticated");
     localStorage.removeItem("userRole");
