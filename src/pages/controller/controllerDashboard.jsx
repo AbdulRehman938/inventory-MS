@@ -1,7 +1,8 @@
 import React from "react";
-import { MdDashboard, MdInventory } from "react-icons/md";
+import { MdDashboard, MdInventory, MdNotifications } from "react-icons/md";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import ControllerOverview from "../../components/controller/ControllerOverview";
+import Notifications from "../Notifications";
 
 const ControllerDashboard = () => {
   const sidebarItems = [
@@ -20,6 +21,12 @@ const ControllerDashboard = () => {
           Inventory Module Coming Soon
         </div>
       ),
+    },
+    {
+      id: "notifications",
+      label: "Alerts",
+      icon: <MdNotifications className="w-5 h-5" />,
+      component: () => <Notifications title="Alerts" />,
     },
   ];
 

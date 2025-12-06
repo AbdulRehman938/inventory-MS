@@ -4,6 +4,11 @@ import DashboardLayout from "../../layouts/DashboardLayout";
 import AdminOverview from "../../components/admin/AdminOverview";
 import UserManagement from "../../components/admin/UserManagement";
 import OTPViewer from "../../components/admin/OTPViewer";
+import BiodataRequests from "../../components/admin/BiodataRequests";
+import Notifications from "../Notifications";
+import {
+  MdNotifications,
+} from "react-icons/md";
 
 const AdminDashboard = () => {
   const sidebarItems = [
@@ -24,6 +29,18 @@ const AdminDashboard = () => {
       label: "OTP Verification",
       icon: <MdSecurity className="w-5 h-5" />,
       component: OTPViewer,
+    },
+    {
+      id: "biodata",
+      label: "Biodata Requests",
+      icon: <MdPeople className="w-5 h-5" />, // Reusing icon or import another one like MdAssignmentInd
+      component: BiodataRequests,
+    },
+    {
+      id: "notifications",
+      label: "Notifications",
+      icon: <MdNotifications className="w-5 h-5" />,
+      component: () => <Notifications title="Notifications" />,
     },
   ];
 

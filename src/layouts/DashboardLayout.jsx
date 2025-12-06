@@ -1,15 +1,125 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { MdLogout } from "react-icons/md";
+import { MdLogout, MdPerson } from "react-icons/md";
 import RoleSwitcher from "../components/RoleSwitcher";
+import ProfileModal from "../components/ProfileModal";
+import BiodataModal from "../components/BiodataModal";
+import NotificationDropdown from "../components/NotificationDropdown";
+import { getCurrentUserProfile } from "../services/userService";
 
-const DashboardLayout = ({ role, sidebarItems }) => {
-  const [activeTabId, setActiveTabId] = useState(sidebarItems[0]?.id);
+const DashboardLayout = ({ role, sidebarItems = [], children }) => {
+  const [activeTabId, setActiveTabId] = useState(sidebarItems?.[0]?.id || null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showBiodataModal, setShowBiodataModal] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
+
   const navigate = useNavigate();
+  const userId = localStorage.getItem("userId");
 
-  const activeItem = sidebarItems.find((item) => item.id === activeTabId);
+  const activeItem = sidebarItems?.find((item) => item.id === activeTabId);
   const ActiveComponent =
     activeItem?.component || (() => <div className="p-4">Page Not Found</div>);
+
+  // State for highlighting specific items (e.g. biodata requests)
+  const [requestsHighlightId, setRequestsHighlightId] = useState(null);
+
+  const handleSwitchTab = (tabId, highlightId = null) => {
+    setActiveTabId(tabId);
+    if (highlightId) {
+      setRequestsHighlightId(highlightId);
+    }
+  };
+
+  // ... (applyTheme and useEffects remain unchanged)
+
+  // Helper to apply theme
+  const applyTheme = (theme) => {
+    // Default to 'light' (Default Blue) if undefined or null
+    const currentTheme = theme || "light";
+
+    document.body.classList.remove(
+      "theme-ocean",
+      "theme-sunset",
+      "theme-forest",
+      "theme-white"
+    );
+    document.documentElement.classList.remove("dark");
+
+    if (currentTheme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else if (["ocean", "sunset", "forest", "white"].includes(currentTheme)) {
+      document.body.classList.add(`theme-${currentTheme}`);
+    }
+  };
+
+  useEffect(() => {
+    // 1. Load theme on mount from LocalStorage first for speed
+    const savedTheme = localStorage.getItem("theme");
+    applyTheme(savedTheme);
+
+    // 2. Load User Data & Refresh Roles & Theme from DB
+    if (userId) {
+      // Load Avatar locally first
+      const extras = JSON.parse(
+        localStorage.getItem(`user_extras_${userId}`) || "{}"
+      );
+      if (extras.avatarUrl) setAvatarUrl(extras.avatarUrl);
+
+      // Fetch fresh roles/profile from DB
+      getCurrentUserProfile(userId).then((result) => {
+        if (result.success) {
+          const dbData = result.data;
+
+          if (dbData.role) {
+            localStorage.setItem("userRoles", JSON.stringify(dbData.role));
+          }
+          if (dbData.avatar_url && dbData.avatar_url !== avatarUrl) {
+            setAvatarUrl(dbData.avatar_url);
+          }
+
+          // Sync Theme from DB
+          if (dbData.theme) {
+            const currentLsTheme = localStorage.getItem("theme");
+            // Only update if different to avoid flicker, but DB is source of truth
+            if (dbData.theme !== currentLsTheme) {
+              localStorage.setItem("theme", dbData.theme);
+              applyTheme(dbData.theme);
+            }
+          } else {
+            // If no theme in DB, set default 'light'
+            localStorage.setItem("theme", "light");
+            applyTheme("light");
+          }
+        }
+      });
+    }
+
+    // Cleanup: Remove theme classes when unmounting (leaving dashboard)
+    return () => {
+      document.body.classList.remove(
+        "theme-ocean",
+        "theme-sunset",
+        "theme-forest",
+        "theme-white"
+      );
+      document.documentElement.classList.remove("dark");
+    };
+  }, [userId]);
+
+  const handleProfileUpdate = () => {
+    // Refresh Avatar
+    const extras = JSON.parse(
+      localStorage.getItem(`user_extras_${userId}`) || "{}"
+    );
+    if (extras.avatarUrl) setAvatarUrl(extras.avatarUrl);
+
+    // Refresh Theme
+    const savedTheme = localStorage.getItem("theme");
+    applyTheme(savedTheme);
+
+    // Close Modal
+    setShowProfileModal(false);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("isAuthenticated");
@@ -20,7 +130,7 @@ const DashboardLayout = ({ role, sidebarItems }) => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 font-sans">
+    <div className="flex h-screen bg-gray-100 font-sans dark:bg-slate-900 transition-colors duration-300">
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20">
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
@@ -65,9 +175,18 @@ const DashboardLayout = ({ role, sidebarItems }) => {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
-          <div className="flex items-center gap-3 px-2 py-2">
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs">
+        {/* Sidebar Footer with Logout */}
+        <div className="p-4 border-t border-slate-800 space-y-4">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center px-4 py-2 text-slate-400 hover:text-white hover:bg-red-600/10 hover:bg-slate-800 rounded-lg transition-colors font-medium text-sm gap-3 group"
+          >
+            <MdLogout className="w-5 h-5 group-hover:text-red-500 transition-colors" />
+            <span>Logout</span>
+          </button>
+
+          <div className="flex items-center gap-3 px-2 pt-2 border-t border-slate-800/50">
+            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs text-slate-300">
               {role[0].toUpperCase()}
             </div>
             <div className="overflow-hidden">
@@ -81,24 +200,46 @@ const DashboardLayout = ({ role, sidebarItems }) => {
       </aside>
 
       {/* Main Layout Area */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-gray-50/50">
+      <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-slate-800 transition-colors duration-300">
         {/* Header */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 h-16 flex items-center justify-between px-8 z-10 sticky top-0">
+        <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 h-20 flex items-center justify-between px-8 z-10 sticky top-0 transition-colors duration-300">
           <div className="flex items-center">
-            <h2 className="text-xl font-bold text-gray-800">
+            <h2 className="text-xl font-bold text-gray-800 dark:text-white transition-colors">
               {activeItem?.label}
             </h2>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
             <RoleSwitcher currentRole={role} />
-            <div className="h-6 w-px bg-gray-300"></div>
+
+            <NotificationDropdown
+              userId={userId}
+              onSwitchTab={handleSwitchTab}
+            />
+
+            <div className="h-6 w-px bg-gray-300 dark:bg-slate-700 mx-2"></div>
+
+            {/* Profile Button */}
             <button
-              onClick={handleLogout}
-              className="flex items-center text-gray-500 hover:text-red-600 transition-colors font-medium text-sm gap-2"
+              onClick={() => setShowProfileModal(true)}
+              className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-slate-800 p-1.5 rounded-full pl-3 transition-all group"
             >
-              <MdLogout className="w-5 h-5" />
-              Logout
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-200 transition-colors profile-btn-text">
+                Profile
+              </span>
+              <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden ring-2 ring-transparent group-hover:ring-blue-500 transition-all">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
+                    <MdPerson className="w-5 h-5" />
+                  </div>
+                )}
+              </div>
             </button>
           </div>
         </header>
@@ -106,10 +247,33 @@ const DashboardLayout = ({ role, sidebarItems }) => {
         {/* Scrollable Content */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-8 scroll-smooth">
           <div className="max-w-7xl mx-auto animate-fadeIn">
-            <ActiveComponent />
+            {children ? (
+              children
+            ) : (
+              <ActiveComponent highlightedRequestId={requestsHighlightId} />
+            )}
           </div>
         </main>
       </div>
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <ProfileModal
+          onClose={() => setShowProfileModal(false)}
+          userId={userId}
+          onProfileUpdate={handleProfileUpdate}
+          onOpenBiodata={() => {
+            setShowProfileModal(false);
+            setShowBiodataModal(true);
+          }}
+        />
+      )}
+      {/* Biodata Modal */}
+      {showBiodataModal && (
+        <BiodataModal
+          onClose={() => setShowBiodataModal(false)}
+          userId={userId}
+        />
+      )}
     </div>
   );
 };

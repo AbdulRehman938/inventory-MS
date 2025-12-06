@@ -13,13 +13,19 @@
     "@splinetool/react-spline": "^4.1.0",
     "@supabase/supabase-js": "^2.83.0",
     "@vercel/analytics": "^1.5.0",
+    "date-fns": "^4.1.0",
+    "formik": "^2.4.9",
     "framer-motion": "^12.23.24",
+    "jspdf": "^3.0.4",
+    "jspdf-autotable": "^5.0.2",
     "react": "^19.1.1",
+    "react-datepicker": "^8.10.0",
     "react-dom": "^19.1.1",
     "react-icons": "^5.5.0",
     "react-router-dom": "^7.9.6",
     "react-toastify": "^11.0.5",
-    "resend": "^6.5.2"
+    "resend": "^6.5.2",
+    "yup": "^1.7.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
