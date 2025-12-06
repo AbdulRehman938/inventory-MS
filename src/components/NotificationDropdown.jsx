@@ -16,8 +16,8 @@ const NotificationDropdown = ({ userId, onSwitchTab }) => {
   useEffect(() => {
     if (userId) {
       fetchNotifications();
-      // Poll for new notifications every 60 seconds (simple real-time)
-      const interval = setInterval(fetchNotifications, 60000);
+      // Poll for new notifications every 5 seconds (faster real-time)
+      const interval = setInterval(fetchNotifications, 5000);
       return () => clearInterval(interval);
     }
   }, [userId]);
