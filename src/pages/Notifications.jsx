@@ -13,7 +13,7 @@ import {
 } from "react-icons/md";
 import { formatDistanceToNow } from "date-fns";
 
-const Notifications = ({ title = "Notifications" }) => {
+const Notifications = ({ title = "Notifications", onNavigate }) => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const userId = localStorage.getItem("userId");
@@ -31,11 +31,25 @@ const Notifications = ({ title = "Notifications" }) => {
     setLoading(false);
   };
 
-  const handleMarkRead = async (id) => {
-    await markNotificationRead(id);
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-    );
+  const handleMarkRead = async (notif) => {
+    if (!notif.is_read) {
+      await markNotificationRead(notif.id);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
+      );
+    }
+
+    // Handle Navigation / Deep Linking
+    if (notif.link && onNavigate) {
+      try {
+        const linkData = JSON.parse(notif.link);
+        if (linkData.tab) {
+          onNavigate(linkData.tab, linkData.id);
+        }
+      } catch (e) {
+        console.error("Failed to parse navigation link", e);
+      }
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -94,7 +108,7 @@ const Notifications = ({ title = "Notifications" }) => {
             {notifications.map((notif) => (
               <div
                 key={notif.id}
-                onClick={() => handleMarkRead(notif.id)}
+                onClick={() => handleMarkRead(notif)}
                 className={`p-6 flex gap-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer ${
                   !notif.is_read ? "bg-blue-50/40 dark:bg-blue-900/10" : ""
                 }`}

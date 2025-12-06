@@ -6,9 +6,7 @@ import UserManagement from "../../components/admin/UserManagement";
 import OTPViewer from "../../components/admin/OTPViewer";
 import BiodataRequests from "../../components/admin/BiodataRequests";
 import Notifications from "../Notifications";
-import {
-  MdNotifications,
-} from "react-icons/md";
+import { MdNotifications } from "react-icons/md";
 
 const AdminDashboard = () => {
   const sidebarItems = [
@@ -40,7 +38,7 @@ const AdminDashboard = () => {
       id: "notifications",
       label: "Notifications",
       icon: <MdNotifications className="w-5 h-5" />,
-      component: () => <Notifications title="Notifications" />,
+      component: (props) => <Notifications title="Notifications" {...props} />,
     },
   ];
 

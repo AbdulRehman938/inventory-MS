@@ -252,7 +252,10 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
             {children ? (
               children
             ) : (
-              <ActiveComponent highlightedRequestId={requestsHighlightId} />
+              <ActiveComponent
+                highlightedRequestId={requestsHighlightId}
+                onNavigate={handleSwitchTab}
+              />
             )}
           </div>
         </main>

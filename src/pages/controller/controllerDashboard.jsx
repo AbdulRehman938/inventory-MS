@@ -26,7 +26,7 @@ const ControllerDashboard = () => {
       id: "notifications",
       label: "Alerts",
       icon: <MdNotifications className="w-5 h-5" />,
-      component: () => <Notifications title="Alerts" />,
+      component: (props) => <Notifications title="Alerts" {...props} />,
     },
   ];
 
