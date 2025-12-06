@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { supabase } from '../../lib/supabaseClient';
-import { sendSignupVerificationOTP } from '../../services/authService';
-import Spline from '@splinetool/react-spline';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { toast } from "react-toastify";
+import { supabase } from "../../lib/supabaseClient";
+import { sendSignupVerificationOTP } from "../../services/authService";
+import Spline from "@splinetool/react-spline";
+import { motion } from "framer-motion";
 
 const Signup = () => {
   const [step, setStep] = useState(1); // 1: Form, 2: OTP Verification
   const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
+    fullName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
   });
-  const [otp, setOtp] = useState('');
+  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState(null);
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -22,6 +22,9 @@ const Signup = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
+  const fileInputRef = React.useRef(null);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
 
   // Cooldown timer effect
   useEffect(() => {
@@ -40,6 +43,24 @@ const Signup = () => {
     return () => clearInterval(interval);
   }, [resendCooldown]);
 
+  // Handle browser back button
+  useEffect(() => {
+    const handlePopState = (event) => {
+      // If user goes back/forward and ends up on step 1 from step 2
+      if (step === 2) {
+        // Reset everything if they try to leave OTP page
+        setStep(1);
+        setOtp("");
+        setFormData((prev) => ({ ...prev, password: "", confirmPassword: "" })); // Clear sensitive data
+        setUserId(null); // This effectively invalidates the current signup flow context
+        toast.info("Session expired. Please sign up again.");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [step]);
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -47,69 +68,77 @@ const Signup = () => {
     });
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        // 5MB limit
+        toast.error("Image size should be less than 5MB");
+        return;
+      }
+      setAvatarFile(file);
+      setAvatarPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setAvatarFile(null);
+    if (avatarPreview) {
+      URL.revokeObjectURL(avatarPreview);
+      setAvatarPreview(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     // Validation
     if (formData.password !== formData.confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error("Passwords do not match");
       return;
     }
 
     if (formData.password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+      toast.error("Password must be at least 6 characters");
       return;
     }
 
     if (!formData.fullName.trim()) {
-      toast.error('Full name is required');
+      toast.error("Full name is required");
+      return;
+    }
+
+    if (!avatarFile) {
+      toast.error("Profile picture is required");
       return;
     }
 
     setLoading(true);
 
     try {
-      // Sign up with Supabase (always as controller)
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          emailRedirectTo: undefined, // Disable email confirmation link
-          data: {
-            full_name: formData.fullName,
-            role: 'controller',
-          },
-        },
-      });
+      // Step 1: Send OTP first (User does NOT exist yet)
+      const otpResult = await sendSignupVerificationOTP(formData.email);
 
-      if (signUpError) throw signUpError;
+      if (otpResult.success) {
+        toast.success("OTP sent to your email. Please verify to continue.");
 
-      if (data.user) {
-        // Check if email is already registered
-        if (data.user.identities && data.user.identities.length === 0) {
-          toast.error('This email is already registered. Please login instead.');
-          setLoading(false);
-          return;
-        }
+        // Push state to history so 'back' button triggers popstate
+        window.history.pushState({ step: 2 }, "");
 
-        // Store user ID for OTP verification
-        setUserId(data.user.id);
-
-        // Send OTP for verification
-        const otpResult = await sendSignupVerificationOTP(formData.email);
-        
-        if (otpResult.success) {
-          toast.success('OTP sent to your email. Please verify to continue.');
-          setStep(2);
-          setResendCooldown(120); // 2 minutes
-          setLastOTPSentTime(Date.now());
-        } else {
-          toast.error(otpResult.message);
-        }
+        setStep(2);
+        setResendCooldown(120); // 2 minutes
+        setLastOTPSentTime(Date.now());
+      } else {
+        toast.error(otpResult.message);
       }
     } catch (err) {
-      console.error('Signup error:', err);
-      toast.error(err.message || 'An error occurred during signup. Please try again.');
+      console.error("Signup error:", err);
+      toast.error(
+        err.message || "An error occurred during signup. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -120,55 +149,122 @@ const Signup = () => {
     setLoading(true);
 
     try {
-      // Verify OTP
-      const { data, error } = await supabase.rpc('verify_otp', {
-        user_email: formData.email,
-        otp_code: otp
-      });
+      // 1. Verify OTP first
+      const { data: verifyData, error: verifyError } = await supabase.rpc(
+        "verify_signup_otp_pre_creation",
+        {
+          target_email: formData.email,
+          otp_code: otp,
+        }
+      );
 
-      if (error) throw error;
+      if (verifyError || !verifyData.success) {
+        throw new Error(
+          verifyData?.message || verifyError?.message || "Invalid OTP"
+        );
+      }
 
-      if (data.success) {
-        // Mark email as confirmed in auth.users
-        const { error: updateError } = await supabase.rpc('confirm_user_email', {
-          user_id: userId
+      // 2. Verified! Now Create Valid User in Supabase
+      const { data: signUpData, error: signUpError } =
+        await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            emailRedirectTo: undefined,
+            data: {
+              full_name: formData.fullName,
+              role: "controller",
+            },
+          },
         });
 
-        if (updateError) throw updateError;
+      if (signUpError) throw signUpError;
 
-        // Check if profile already exists
-        const { data: existingProfile, error: checkError } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', userId)
-          .maybeSingle();
+      const newUserId = signUpData.user?.id;
+      if (!newUserId) throw new Error("Failed to create user account.");
 
-        // Create profile only if it doesn't exist
-        if (!existingProfile && !checkError) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: userId,
-              email: formData.email,
-              full_name: formData.fullName,
-              role: ['controller']
-            });
+      setUserId(newUserId);
 
-          if (profileError && profileError.code !== '23505') {
-            throw profileError;
-          }
+      // 2.5 FORCE CONFIRM EMAIL (Bypass Supabase Link)
+      // Since we already verified OTP, we mark them as confirmed in Auth system
+      const { error: confirmError } = await supabase.rpc(
+        "confirm_auth_user_by_email",
+        {
+          target_email: formData.email.trim(),
         }
+      );
 
-        toast.success('Account verified successfully! Please login.');
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
-      } else {
-        toast.error(data.message || 'Invalid or expired OTP');
+      if (confirmError) {
+        console.error("Confirmation RPC failed:", confirmError);
+        throw confirmError;
       }
+
+      // 3. Login immediately to handle Storage RLS (Authorized Upload)
+      // (Even though signUp might auto-login, we ensure we have a session)
+      const { error: sessionError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (sessionError) {
+        console.warn("Auto-login for upload failed:", sessionError);
+      }
+
+      // 4. Upload Avatar
+      let avatarUrl = null;
+      if (avatarFile) {
+        try {
+          const fileExt = avatarFile.name.split(".").pop().toLowerCase();
+          const fileName = `${newUserId}.${fileExt}`;
+          const filePath = `${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("avatars")
+            .upload(filePath, avatarFile, { upsert: true });
+
+          if (uploadError) {
+            console.error("Avatar upload error:", uploadError);
+          } else {
+            const {
+              data: { publicUrl },
+            } = supabase.storage.from("avatars").getPublicUrl(filePath);
+            avatarUrl = publicUrl;
+          }
+        } catch (uploadErr) {
+          console.error("Error uploading avatar:", uploadErr);
+        }
+      }
+
+      // 5. Update the automatically created profile with Avatar
+      if (avatarUrl) {
+        try {
+          const { error: updateProfileError } = await supabase
+            .from("profiles")
+            .update({
+              avatar_url: avatarUrl,
+            })
+            .eq("id", newUserId);
+
+          if (updateProfileError) {
+            console.error(
+              "Error updating profile picture:",
+              updateProfileError
+            );
+          }
+        } catch (updateErr) {
+          console.error("Failed to update profile", updateErr);
+        }
+      }
+
+      // 6. Finish
+      await supabase.auth.signOut();
+      toast.success("Account created successfully! Please login.");
+      setTimeout(() => {
+        navigate("/login");
+      }, 2000);
     } catch (err) {
-      console.error('OTP verification error:', err);
-      toast.error(err.message || 'Failed to verify OTP. Please try again.');
+      console.error("Verification error:", err);
+      toast.error(err.message || "Failed to verify. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -176,15 +272,19 @@ const Signup = () => {
 
   const handleResendOTP = async () => {
     if (resendCooldown > 0) {
-      toast.error(`Please wait ${Math.floor(resendCooldown / 60)}:${String(resendCooldown % 60).padStart(2, '0')} before requesting a new OTP`);
+      toast.error(
+        `Please wait ${Math.floor(resendCooldown / 60)}:${String(
+          resendCooldown % 60
+        ).padStart(2, "0")} before requesting a new OTP`
+      );
       return;
     }
 
     setLoading(true);
     const result = await sendSignupVerificationOTP(formData.email);
-    
+
     if (result.success) {
-      toast.success('OTP resent to your email.');
+      toast.success("OTP resent to your email.");
       setResendCooldown(120); // 2 minutes
       setLastOTPSentTime(Date.now());
     } else {
@@ -194,7 +294,7 @@ const Signup = () => {
   };
 
   return (
-    <motion.div 
+    <motion.div
       className="min-h-screen flex bg-white overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -202,7 +302,7 @@ const Signup = () => {
       transition={{ duration: 0.5 }}
     >
       {/* Left Side - Sign Up Form */}
-      <motion.div 
+      <motion.div
         className="flex-1 flex items-center justify-center p-8 bg-gray-50 transition-all duration-700 ease-in-out z-20"
         initial={{ x: -100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -215,24 +315,144 @@ const Signup = () => {
             <>
               <div className="text-center mb-8">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  <svg
+                    className="w-8 h-8 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                    />
                   </svg>
                 </div>
-                <h2 className="text-3xl font-bold text-gray-800 mb-2">Create Account</h2>
+                <h2 className="text-3xl font-bold text-gray-800 mb-2">
+                  Create Account
+                </h2>
                 <p className="text-gray-600">Sign up to get started</p>
               </div>
 
               <div className="bg-white p-8 rounded-2xl shadow-lg">
                 <form onSubmit={handleSubmit} className="space-y-5">
+                  {/* Profile Image Upload */}
+                  <div className="flex justify-center mb-6">
+                    <div className="relative">
+                      <div
+                        className={`w-24 h-24 rounded-full border-2 border-dashed flex items-center justify-center overflow-hidden cursor-pointer transition-colors ${
+                          avatarPreview
+                            ? "border-blue-500"
+                            : "border-gray-300 hover:border-blue-400"
+                        }`}
+                        onClick={() =>
+                          !avatarPreview && fileInputRef.current?.click()
+                        }
+                      >
+                        {avatarPreview ? (
+                          <img
+                            src={avatarPreview}
+                            alt="Profile preview"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-center p-2">
+                            <svg
+                              className="w-8 h-8 text-gray-400 mx-auto mb-1"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={1.5}
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                              />
+                            </svg>
+                            <span className="text-xs text-gray-500 font-medium">
+                              Add Photo
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {avatarPreview ? (
+                        <button
+                          type="button"
+                          onClick={handleRemoveImage}
+                          className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+                          title="Remove image"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="absolute -bottom-1 -right-1 bg-blue-600 text-white rounded-full p-1.5 shadow-md hover:bg-blue-700 transition-colors"
+                          title="Upload image"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 4v16m8-8H4"
+                            />
+                          </svg>
+                        </button>
+                      )}
+
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleImageChange}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label htmlFor="fullName" className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label
+                      htmlFor="fullName"
+                      className="block text-sm font-semibold text-gray-700 mb-2"
+                    >
                       Full Name
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                          />
                         </svg>
                       </div>
                       <input
@@ -248,13 +468,26 @@ const Signup = () => {
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label
+                      htmlFor="email"
+                      className="block text-sm font-semibold text-gray-700 mb-2"
+                    >
                       Email Address
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
+                          />
                         </svg>
                       </div>
                       <input
@@ -270,13 +503,26 @@ const Signup = () => {
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label
+                      htmlFor="password"
+                      className="block text-sm font-semibold text-gray-700 mb-2"
+                    >
                       Password
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                          />
                         </svg>
                       </div>
                       <input
@@ -295,26 +541,64 @@ const Signup = () => {
                         className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
                       >
                         {showPassword ? (
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                            />
                           </svg>
                         ) : (
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
                           </svg>
                         )}
                       </button>
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label
+                      htmlFor="confirmPassword"
+                      className="block text-sm font-semibold text-gray-700 mb-2"
+                    >
                       Confirm Password
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
                         </svg>
                       </div>
                       <input
@@ -329,17 +613,44 @@ const Signup = () => {
                       />
                       <button
                         type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        onClick={() =>
+                          setShowConfirmPassword(!showConfirmPassword)
+                        }
                         className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
                       >
                         {showConfirmPassword ? (
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                            />
                           </svg>
                         ) : (
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
                           </svg>
                         )}
                       </button>
@@ -352,19 +663,39 @@ const Signup = () => {
                   >
                     {loading ? (
                       <span className="flex items-center justify-center">
-                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        <svg
+                          className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
                         </svg>
                         Creating Account...
                       </span>
-                    ) : 'Sign Up'}
+                    ) : (
+                      "Sign Up"
+                    )}
                   </button>
                 </form>
                 <div className="mt-6 text-center">
                   <p className="text-sm text-gray-600">
-                    Already have an account?{' '}
-                    <Link to="/login" className="text-blue-600 hover:text-blue-700 font-semibold">
+                    Already have an account?{" "}
+                    <Link
+                      to="/login"
+                      className="text-blue-600 hover:text-blue-700 font-semibold"
+                    >
                       Login
                     </Link>
                   </p>
@@ -375,11 +706,23 @@ const Signup = () => {
             <>
               <div className="text-center mb-8">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  <svg
+                    className="w-8 h-8 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
                   </svg>
                 </div>
-                <h2 className="text-3xl font-bold text-gray-800 mb-2">Verify Email</h2>
+                <h2 className="text-3xl font-bold text-gray-800 mb-2">
+                  Verify Email
+                </h2>
                 <p className="text-gray-600">Enter the 6-digit OTP sent to</p>
                 <p className="text-gray-800 font-semibold">{formData.email}</p>
               </div>
@@ -387,14 +730,19 @@ const Signup = () => {
               <div className="bg-white p-8 rounded-2xl shadow-lg">
                 <form onSubmit={handleVerifyOTP} className="space-y-5">
                   <div>
-                    <label htmlFor="otp" className="block text-sm font-semibold text-gray-700 mb-2 text-center">
+                    <label
+                      htmlFor="otp"
+                      className="block text-sm font-semibold text-gray-700 mb-2 text-center"
+                    >
                       OTP Code
                     </label>
                     <input
                       type="text"
                       id="otp"
                       value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onChange={(e) =>
+                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
                       className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-3xl tracking-[0.5em] font-bold transition-all"
                       placeholder="000000"
                       maxLength="6"
@@ -408,13 +756,30 @@ const Signup = () => {
                   >
                     {loading ? (
                       <span className="flex items-center justify-center">
-                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        <svg
+                          className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
                         </svg>
                         Verifying...
                       </span>
-                    ) : 'Verify OTP'}
+                    ) : (
+                      "Verify OTP"
+                    )}
                   </button>
                   <div className="flex items-center justify-center gap-2 pt-2">
                     <button
@@ -427,7 +792,8 @@ const Signup = () => {
                     </button>
                     {resendCooldown > 0 && (
                       <span className="text-sm text-gray-600 font-medium">
-                        ({Math.floor(resendCooldown / 60)}:{String(resendCooldown % 60).padStart(2, '0')})
+                        ({Math.floor(resendCooldown / 60)}:
+                        {String(resendCooldown % 60).padStart(2, "0")})
                       </span>
                     )}
                   </div>
@@ -439,15 +805,15 @@ const Signup = () => {
       </motion.div>
 
       {/* Right Side - 3D Spline Scene */}
-      <motion.div 
+      <motion.div
         className="hidden lg:flex lg:w-[45%] relative overflow-hidden transition-all duration-700 ease-in-out"
         initial={{ x: 100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 100, opacity: 0 }}
         transition={{ duration: 0.6, ease: "easeInOut" }}
       >
-        <div className="absolute inset-0 -left-[15%] -right-[15%] scale-125 z-0">
-          <div style={{ width: '100%', height: '100%' }}>
+        <div className="absolute inset-0 -left-[15%] -right-[15%] scale-125 z-0 pointer-events-none">
+          <div style={{ width: "100%", height: "100%" }}>
             <Spline scene="https://prod.spline.design/kOz7ef-PqxsxwwLA/scene.splinecode" />
           </div>
         </div>
@@ -457,8 +823,12 @@ const Signup = () => {
         </div>
         {/* Overlay Text */}
         <div className="absolute bottom-8 right-8 text-white z-10 pointer-events-none text-right">
-          <h1 className="text-4xl font-bold mb-2 drop-shadow-lg">Join Us Today</h1>
-          <p className="text-lg opacity-90 drop-shadow-md">Start managing your inventory efficiently</p>
+          <h1 className="text-4xl font-bold mb-2 drop-shadow-lg">
+            Join Us Today
+          </h1>
+          <p className="text-lg opacity-90 drop-shadow-md">
+            Start managing your inventory efficiently
+          </p>
         </div>
       </motion.div>
     </motion.div>

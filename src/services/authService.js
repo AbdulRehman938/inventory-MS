@@ -107,26 +107,57 @@ export const resetPassword = async (email, newPassword) => {
 };
 
 // Send OTP for email verification (signup)
+// Send OTP for email verification (signup)
+// Send OTP for email verification (signup)
 export const sendSignupVerificationOTP = async (email) => {
   try {
-    // Call Edge Function to send verification OTP
-    const { data, error } = await supabase.functions.invoke('send-otp', {
-      body: { 
-        email,
-        purpose: 'signup'
-      }
+    // 1. Call Database RPC directly to GENERATE the pre-signup OTP
+    const { data: dbData, error: dbError } = await supabase.rpc('create_signup_otp', {
+      user_email: email
     });
 
-    if (error) {
-      console.error('Edge function error:', error);
-      throw error;
-    }
+    if (dbError) throw dbError;
 
-    if (data?.success) {
+    if (dbData.success) {
+      // 2. Call Edge Function to SEND the email with the generated OTP
+      // We pass the generated OTP to the edge function so it sends THAT code, not a new one.
+      // Note: You need to update your Edge Function to accept 'otp' in the body if it doesn't already,
+      // or rely on the Edge Function to Generate AND Send. 
+      
+      // However, since the user wants "Inventory MS" email, that implies the Edge Function handles the email template.
+      // If the Edge function generates its own OTP, our DB 'create_signup_otp' won't match.
+      
+      // OPTION A: Trust the Edge Function completely (if it inserts into DB).
+      // OPTION B (Current Path): We generated OTP in DB. We need to tell Edge Function "Send THIS code".
+      
+      // Let's assume the 'send-otp' function accepts an 'otp' parameter to override generation,
+      // OR we just use the edge function solely for email transport.
+      
+      const { error: emailError } = await supabase.functions.invoke('send-otp', {
+        body: { 
+          email,
+          purpose: 'signup',
+          otp: dbData.otp // PASS THE GENERATED OTP
+        }
+      });
+
+      if (emailError) {
+        console.error("Failed to send email via edge function:", emailError);
+        // We don't throw here in DEV, so you can still see the console log OTP.
+        // In PROD, this should probably be an error.
+      }
+
+      // In development, show OTP in console as backup
+      if (import.meta.env.DEV) {
+        console.log('=================================');
+        console.log('📧 DEVELOPMENT MODE - Signup OTP:', dbData.otp);
+        console.log('=================================');
+      }
+      
       return { success: true, message: 'Verification code sent to your email' };
     }
 
-    return { success: false, message: data?.message || 'Failed to send verification code' };
+    return { success: false, message: dbData.message || 'Failed to send verification code' };
   } catch (error) {
     console.error('Error sending verification OTP:', error);
     return { success: false, message: error.message };

@@ -1,19 +1,30 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { supabase } from '../../lib/supabaseClient';
-import Spline from '@splinetool/react-spline';
-import { motion } from 'framer-motion';
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { toast } from "react-toastify";
+import { supabase } from "../../lib/supabaseClient";
+import Spline from "@splinetool/react-spline";
+import { motion } from "framer-motion";
 
 const Login = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showRoleSelector, setShowRoleSelector] = useState(false);
   const [availableRoles, setAvailableRoles] = useState([]);
   const [userData, setUserData] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const navigate = useNavigate();
+
+  // Check for remembered email on mount
+  React.useEffect(() => {
+    const rememberedEmail = localStorage.getItem("rememberedEmail");
+    if (rememberedEmail) {
+      setEmail(rememberedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,10 +32,11 @@ const Login = () => {
 
     try {
       // Sign in with Supabase
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
       if (signInError) {
         toast.error(signInError.message);
@@ -33,44 +45,51 @@ const Login = () => {
       }
 
       if (data.user) {
+        // Handle Remember Me
+        if (rememberMe) {
+          localStorage.setItem("rememberedEmail", email);
+        } else {
+          localStorage.removeItem("rememberedEmail");
+        }
+
         // Get user roles from profiles table
         const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', data.user.id)
+          .from("profiles")
+          .select("role, full_name, avatar_url")
+          .eq("id", data.user.id)
           .maybeSingle();
 
         let userRoles = profile?.role;
 
         // If no profile found, create one with controller role
         if (!profile && !profileError) {
-          console.log('No profile found, creating one with controller role...');
+          console.log("No profile found, creating one with controller role...");
           const { error: insertError } = await supabase
-            .from('profiles')
+            .from("profiles")
             .insert({
               id: data.user.id,
               email: data.user.email,
-              role: ['controller'],
-              full_name: data.user.user_metadata?.full_name || 'User'
+              role: ["controller"],
+              full_name: data.user.user_metadata?.full_name || "User",
             });
 
           if (insertError) {
-            console.error('Error creating profile:', insertError);
-            toast.error('Error creating user profile. Please try again.');
+            console.error("Error creating profile:", insertError);
+            toast.error("Error creating user profile. Please try again.");
             setLoading(false);
             return;
           }
-          userRoles = ['controller'];
+          userRoles = ["controller"];
         } else if (profileError) {
-          console.error('Error fetching profile:', profileError);
-          toast.error('Error fetching user profile. Please try again.');
+          console.error("Error fetching profile:", profileError);
+          toast.error("Error fetching user profile. Please try again.");
           setLoading(false);
           return;
         }
 
         // Validate roles exist
         if (!userRoles || userRoles.length === 0) {
-          toast.error('Invalid user roles. Please contact admin.');
+          toast.error("Invalid user roles. Please contact admin.");
           setLoading(false);
           return;
         }
@@ -79,6 +98,7 @@ const Login = () => {
         if (userRoles.length > 1) {
           setAvailableRoles(userRoles);
           setUserData(data.user);
+          setUserProfile(profile);
           setShowRoleSelector(true);
           setLoading(false);
           return;
@@ -86,40 +106,70 @@ const Login = () => {
 
         // Single role - navigate directly
         const primaryRole = userRoles[0];
-        navigateToRole(primaryRole, userRoles, data.user.id);
+        navigateToRole(
+          primaryRole,
+          userRoles,
+          data.user.id,
+          profile,
+          data.user
+        );
       }
     } catch (err) {
-      console.error('Login error:', err);
-      toast.error('An unexpected error occurred. Please try again.');
+      console.error("Login error:", err);
+      toast.error("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const navigateToRole = (selectedRole, allRoles, userId) => {
+  const navigateToRole = (
+    selectedRole,
+    allRoles,
+    userId,
+    profile,
+    authUser
+  ) => {
     // Set authentication state
-    localStorage.setItem('isAuthenticated', 'true');
-    localStorage.setItem('userRole', selectedRole);
-    localStorage.setItem('userRoles', JSON.stringify(allRoles)); // Store all roles
-    localStorage.setItem('userId', userId);
+    localStorage.setItem("isAuthenticated", "true");
+    localStorage.setItem("userRole", selectedRole);
+    localStorage.setItem("userRoles", JSON.stringify(allRoles)); // Store all roles
+    localStorage.setItem("userId", userId);
+
+    // Store user details in an array as requested
+    const userDetails = [
+      {
+        name:
+          profile?.full_name || authUser?.user_metadata?.full_name || "User",
+        img: profile?.avatar_url || null,
+        email: authUser?.email,
+        dateCreated: authUser?.created_at,
+        loginTime: new Date().toISOString(),
+        role: selectedRole,
+      },
+    ];
+
+    console.log("Fetched Profile:", profile);
+    console.log("Saving User Details to LocalStorage:", userDetails);
+
+    localStorage.setItem("userDetails", JSON.stringify(userDetails));
 
     toast.success(`Welcome! Logging in as ${selectedRole}`);
 
     // Navigate based on selected role
-    if (selectedRole === 'admin') {
-      navigate('/admin/dashboard');
+    if (selectedRole === "admin") {
+      navigate("/admin/dashboard");
     } else {
-      navigate('/controller/dashboard');
+      navigate("/controller/dashboard");
     }
   };
 
   const handleRoleSelection = (role) => {
-    navigateToRole(role, availableRoles, userData.id);
+    navigateToRole(role, availableRoles, userData.id, userProfile, userData);
     setShowRoleSelector(false);
   };
 
   return (
-    <motion.div 
+    <motion.div
       className="min-h-screen flex bg-white overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -168,15 +218,15 @@ const Login = () => {
       )}
 
       {/* Left Side - 3D Spline Scene */}
-      <motion.div 
+      <motion.div
         className="hidden lg:flex lg:w-[45%] relative overflow-hidden"
         initial={{ x: -100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: -100, opacity: 0 }}
         transition={{ duration: 0.6, ease: "easeInOut" }}
       >
-        <div className="absolute inset-0 -left-[15%] -right-[15%] scale-125 z-0">
-          <div style={{ width: '100%', height: '100%' }}>
+        <div className="absolute inset-0 -left-[15%] -right-[15%] scale-125 z-0 pointer-events-none">
+          <div style={{ width: "100%", height: "100%" }}>
             <Spline scene="https://prod.spline.design/kOz7ef-PqxsxwwLA/scene.splinecode" />
           </div>
         </div>
@@ -186,13 +236,17 @@ const Login = () => {
         </div>
         {/* Overlay Text */}
         <div className="absolute bottom-8 left-8 text-white z-10 pointer-events-none">
-          <h1 className="text-4xl font-bold mb-2 drop-shadow-lg">Inventory Management System</h1>
-          <p className="text-lg opacity-90 drop-shadow-md">Manage your inventory with ease and efficiency</p>
+          <h1 className="text-4xl font-bold mb-2 drop-shadow-lg">
+            Inventory Management System
+          </h1>
+          <p className="text-lg opacity-90 drop-shadow-md">
+            Manage your inventory with ease and efficiency
+          </p>
         </div>
       </motion.div>
 
       {/* Right Side - Login Form */}
-      <motion.div 
+      <motion.div
         className="flex-1 flex items-center justify-center p-8 bg-gray-50 z-20"
         initial={{ x: 100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -202,24 +256,49 @@ const Login = () => {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <svg
+                className="w-8 h-8 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                />
               </svg>
             </div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-2">Welcome Back</h2>
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">
+              Welcome Back
+            </h2>
             <p className="text-gray-600">Please login to your account</p>
           </div>
 
           <div className="bg-white p-8 rounded-2xl shadow-lg">
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
                   Email Address
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                    <svg
+                      className="w-5 h-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
+                      />
                     </svg>
                   </div>
                   <input
@@ -234,13 +313,26 @@ const Login = () => {
                 </div>
               </div>
               <div>
-                <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-semibold text-gray-700 mb-2"
+                >
                   Password
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    <svg
+                      className="w-5 h-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                      />
                     </svg>
                   </div>
                   <input
@@ -258,24 +350,77 @@ const Login = () => {
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     {showPassword ? (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                        />
                       </svg>
                     ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        />
                       </svg>
                     )}
                   </button>
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <label className="flex items-center">
-                  <input type="checkbox" className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
-                  <span className="ml-2 text-sm text-gray-600">Remember me</span>
+                <label className="flex items-center cursor-pointer">
+                  <div className="relative flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="peer h-5 w-5 cursor-pointer appearance-none rounded-full border-2 border-gray-300 transition-all checked:border-blue-600 checked:bg-blue-600 hover:border-blue-400"
+                    />
+                    <svg
+                      className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 transition-opacity peer-checked:opacity-100"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M10 3L4.5 8.5L2 6"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                  <span className="ml-2 text-sm text-gray-600 select-none">
+                    Remember me
+                  </span>
                 </label>
-                <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                <Link
+                  to="/forgot-password"
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
                   Forgot password?
                 </Link>
               </div>
@@ -286,19 +431,39 @@ const Login = () => {
               >
                 {loading ? (
                   <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <svg
+                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
                     </svg>
                     Logging in...
                   </span>
-                ) : 'Login'}
+                ) : (
+                  "Login"
+                )}
               </button>
             </form>
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
-                Don't have an account?{' '}
-                <Link to="/signup" className="text-blue-600 hover:text-blue-700 font-semibold">
+                Don't have an account?{" "}
+                <Link
+                  to="/signup"
+                  className="text-blue-600 hover:text-blue-700 font-semibold"
+                >
                   Sign up
                 </Link>
               </p>
