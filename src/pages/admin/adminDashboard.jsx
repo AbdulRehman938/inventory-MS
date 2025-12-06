@@ -33,7 +33,7 @@ const AdminDashboard = () => {
     {
       id: "biodata",
       label: "Biodata Requests",
-      icon: <MdPeople className="w-5 h-5" />, // Reusing icon or import another one like MdAssignmentInd
+      icon: <MdPeople className="w-5 h-5" />,
       component: BiodataRequests,
     },
     {

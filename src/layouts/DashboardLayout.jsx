@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { MdLogout, MdPerson } from "react-icons/md";
+import { toast } from "react-toastify";
 import RoleSwitcher from "../components/RoleSwitcher";
 import ProfileModal from "../components/ProfileModal";
 import BiodataModal from "../components/BiodataModal";
 import NotificationDropdown from "../components/NotificationDropdown";
-import { getCurrentUserProfile } from "../services/userService";
+import {
+  getCurrentUserProfile,
+  getUnreadNotifications,
+} from "../services/userService";
 
 const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   const [activeTabId, setActiveTabId] = useState(sidebarItems?.[0]?.id || null);
@@ -92,6 +96,19 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
           }
         }
       });
+
+      // 3. Fetch Unread Notifications Summary (Login Toast)
+      getUnreadNotifications(userId).then((result) => {
+        if (result.success && result.data.length > 0) {
+          const count = result.data.length;
+          toast.info(
+            `You have ${count} unread notification${count > 1 ? "s" : ""}`,
+            {
+              onClick: () => handleSwitchTab("notifications"),
+            }
+          );
+        }
+      });
     }
 
     // Cleanup: Remove theme classes when unmounting (leaving dashboard)
@@ -105,21 +122,6 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
       document.documentElement.classList.remove("dark");
     };
   }, [userId]);
-
-  const handleProfileUpdate = () => {
-    // Refresh Avatar
-    const extras = JSON.parse(
-      localStorage.getItem(`user_extras_${userId}`) || "{}"
-    );
-    if (extras.avatarUrl) setAvatarUrl(extras.avatarUrl);
-
-    // Refresh Theme
-    const savedTheme = localStorage.getItem("theme");
-    applyTheme(savedTheme);
-
-    // Close Modal
-    setShowProfileModal(false);
-  };
 
   const handleLogout = () => {
     localStorage.removeItem("isAuthenticated");

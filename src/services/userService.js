@@ -370,6 +370,23 @@ export const getNotifications = async (userId) => {
     }
 };
 
+export const getUnreadNotifications = async (userId) => {
+    try {
+        const { data, error } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_read', false)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return { success: true, data };
+    } catch (error) {
+        console.error('Error fetching unread notifications:', error);
+        return { success: false, message: error.message };
+    }
+};
+
 export const markNotificationRead = async (notificationId) => {
     try {
         const { error } = await supabase
