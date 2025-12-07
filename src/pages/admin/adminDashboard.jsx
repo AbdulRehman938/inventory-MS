@@ -1,14 +1,34 @@
-import React from "react";
-import { MdDashboard, MdPeople, MdSecurity } from "react-icons/md";
+import React, { useState, useEffect } from "react";
+import {
+  MdDashboard,
+  MdPeople,
+  MdNotifications,
+  MdInventory,
+  MdCategory,
+} from "react-icons/md";
 import DashboardLayout from "../../layouts/DashboardLayout";
 import AdminOverview from "../../components/admin/AdminOverview";
 import UserManagement from "../../components/admin/UserManagement";
-import OTPViewer from "../../components/admin/OTPViewer";
 import BiodataRequests from "../../components/admin/BiodataRequests";
+import StockManagement from "../../components/admin/StockManagement";
+import CustomerTypesManagement from "../../components/admin/CustomerTypesManagement";
 import Notifications from "../Notifications";
-import { MdNotifications } from "react-icons/md";
+import DashboardLoader from "../../components/DashboardLoader";
 
 const AdminDashboard = () => {
+  // Check if loader has already been shown in this session
+  const [isLoading, setIsLoading] = useState(() => {
+    const hasShownLoader = sessionStorage.getItem("adminDashboardLoaded");
+    return !hasShownLoader; // Show loader only if not shown before
+  });
+
+  useEffect(() => {
+    // Mark loader as shown for this session
+    if (isLoading) {
+      sessionStorage.setItem("adminDashboardLoaded", "true");
+    }
+  }, [isLoading]);
+
   const sidebarItems = [
     {
       id: "overview",
@@ -23,16 +43,22 @@ const AdminDashboard = () => {
       component: UserManagement,
     },
     {
-      id: "otps",
-      label: "OTP Verification",
-      icon: <MdSecurity className="w-5 h-5" />,
-      component: OTPViewer,
-    },
-    {
       id: "biodata",
       label: "Biodata Requests",
       icon: <MdPeople className="w-5 h-5" />,
       component: BiodataRequests,
+    },
+    {
+      id: "stock",
+      label: "Stock Management",
+      icon: <MdInventory className="w-5 h-5" />,
+      component: StockManagement,
+    },
+    {
+      id: "customer-types",
+      label: "Customer Types",
+      icon: <MdCategory className="w-5 h-5" />,
+      component: CustomerTypesManagement,
     },
     {
       id: "notifications",
@@ -41,6 +67,10 @@ const AdminDashboard = () => {
       component: (props) => <Notifications title="Notifications" {...props} />,
     },
   ];
+
+  if (isLoading) {
+    return <DashboardLoader onComplete={() => setIsLoading(false)} />;
+  }
 
   return <DashboardLayout role="admin" sidebarItems={sidebarItems} />;
 };
