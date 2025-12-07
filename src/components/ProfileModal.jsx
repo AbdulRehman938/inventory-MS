@@ -158,14 +158,21 @@ const ProfileModal = ({ onClose, userId, onProfileUpdate, onOpenBiodata }) => {
     localStorage.getItem(`user_extras_${userId}`) || "{}"
   );
   const savedTheme = localStorage.getItem("theme") || "light";
-  const userRoles = JSON.parse(localStorage.getItem("userRoles") || "[]");
 
-  // Check permissions
+  // Use state for roles to trigger re-renders
+  const [userRoles, setUserRoles] = useState(
+    JSON.parse(localStorage.getItem("userRoles") || "[]")
+  );
+  const [hasThemeAccess, setHasThemeAccess] = useState(false);
+
+  // Check permissions based on CURRENT state
   const isController =
     userRoles.includes("controller") && !userRoles.includes("admin");
   const hasThemePermission =
-    userRoles.includes("theme_pro") || userRoles.includes("admin");
-  const canUseCustomThemes = !isController || hasThemePermission;
+    userRoles.includes("theme_pro") || userRoles.includes("admin"); // valid for legacy or admin
+
+  const canUseCustomThemes =
+    !isController || hasThemePermission || hasThemeAccess;
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -194,6 +201,16 @@ const ProfileModal = ({ onClose, userId, onProfileUpdate, onOpenBiodata }) => {
 
     if (result.success) {
       const dbData = result.data;
+
+      // Update localStorage with fresh roles for permissions
+      if (dbData.role) {
+        localStorage.setItem("userRoles", JSON.stringify(dbData.role));
+        setUserRoles(dbData.role);
+      }
+
+      // Update Theme Access from DB (handle both true and false)
+      setHasThemeAccess(!!dbData.theme_access);
+
       setProfile((prev) => ({
         ...prev,
         fullName: dbData.full_name || prev.fullName,

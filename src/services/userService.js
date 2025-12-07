@@ -21,17 +21,73 @@ export const createUserByAdmin = async (email, password, fullName, roles) => {
 // Update user data including email and password (admin only)
 export const updateUserData = async (userId, updates) => {
   try {
+    console.log('🔵 [updateUserData] Starting update for userId:', userId);
+    console.log('🔵 [updateUserData] Updates to apply:', updates);
+    
+    // DISABLED: Edge Function has a bug - it returns success without updating
+    // We'll use direct DB update instead (which works with our RLS policy)
+    /*
     const { data, error } = await supabase.functions.invoke('admin-update-user', {
       body: { userId, updates }
     });
 
-    if (error) throw error;
-    if (data?.success) {
+    if (!error && data?.success) {
+      console.log('✅ [updateUserData] Edge Function succeeded:', data);
       return { success: true, message: 'User updated successfully' };
     }
-    return { success: false, message: data?.message || 'Failed to update user' };
+    */
+    
+    // Direct Database Update (works correctly with RLS)
+    console.log('🔵 [updateUserData] Using direct DB update (Edge Function bypassed)');
+    
+    
+    const profileUpdates = {};
+    if (updates.fullName !== undefined) profileUpdates.full_name = updates.fullName;
+    if (updates.roles !== undefined) profileUpdates.role = updates.roles;
+    if (updates.isActive !== undefined) profileUpdates.is_active = updates.isActive;
+    if (updates.location !== undefined) profileUpdates.location = updates.location;
+    if (updates.theme !== undefined) profileUpdates.theme = updates.theme;
+    if (updates.themeAccess !== undefined) profileUpdates.theme_access = updates.themeAccess;
+
+    console.log('🔵 [updateUserData] Profile updates to send:', profileUpdates);
+
+    if (Object.keys(profileUpdates).length > 0) {
+        const { data: updatedData, error: dbError } = await supabase
+            .from('profiles')
+            .update(profileUpdates)
+            .eq('id', userId)
+            .select();
+
+        console.log('🔵 [updateUserData] Database response:', { updatedData, dbError });
+
+        if (dbError) {
+            console.error('❌ [updateUserData] Database error:', dbError);
+            throw dbError;
+        }
+        
+        if (!updatedData || updatedData.length === 0) {
+             console.error('❌ [updateUserData] No rows updated (RLS or user not found)');
+             return { success: false, message: 'Update failed: User not found or permission denied (RLS).' };
+        }
+        
+        console.log('✅ [updateUserData] Successfully updated profile. Row count:', updatedData.length);
+        
+        let message = 'Profile updated successfully.';
+        if (updates.email || updates.password) {
+            message += ' (Note: Email/Password update requires deployed Edge Functions)';
+        }
+        return { success: true, message };
+    }
+
+    // If we reached here with only email/pass updates and no profile updates, and function failed
+    if (updates.email || updates.password) {
+         return { success: false, message: 'Auth updates (Email/Password) require admin-update-user Edge Function.' };
+    }
+
+    return { success: true, message: 'No profile changes to save.' };
+
   } catch (error) {
-    console.error('Error updating user:', error);
+    console.error('❌ [updateUserData] Caught error:', error);
     return { success: false, message: error.message };
   }
 };
@@ -77,7 +133,7 @@ export const getAllUsers = async () => {
     // First try direct query (if RLS allows)
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('*, location, theme_access, role')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -139,7 +195,7 @@ export const getCurrentUserProfile = async (userId) => {
     try {
         const { data, error } = await supabase
             .from('profiles')
-            .select('*')
+            .select('*, location, theme_access, role')
             .eq('id', userId)
             .single();
 

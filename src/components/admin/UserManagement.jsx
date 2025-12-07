@@ -77,6 +77,7 @@ const UserManagement = () => {
       roles: editModalData.roles,
       isActive: editModalData.isActive,
       location: editModalData.location,
+      themeAccess: editModalData.themeAccess,
     };
 
     if (editModalData.password) {
@@ -176,6 +177,7 @@ const UserManagement = () => {
       roles: user.role,
       isActive: user.is_active,
       location: user.location,
+      themeAccess: user.theme_access,
     });
   };
 
@@ -530,9 +532,12 @@ const UserManagement = () => {
                   <label className="flex items-center space-x-3 cursor-pointer mt-2">
                     <input
                       type="checkbox"
-                      checked={editModalData.roles.includes("theme_pro")}
+                      checked={editModalData.themeAccess || false}
                       onChange={(e) =>
-                        handleEditModalRoleChange("theme_pro", e.target.checked)
+                        setEditModalData({
+                          ...editModalData,
+                          themeAccess: e.target.checked,
+                        })
                       }
                       className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4"
                     />

@@ -126,18 +126,26 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
         }
       });
 
-      // 3. Fetch Unread Notifications Summary (Login Toast)
-      getUnreadNotifications(userId).then((result) => {
-        if (result.success && result.data.length > 0) {
-          const count = result.data.length;
-          toast.info(
-            `You have ${count} unread notification${count > 1 ? "s" : ""}`,
-            {
-              onClick: () => handleSwitchTab("notifications"),
-            }
-          );
-        }
-      });
+      // 3. Fetch Unread Notifications Summary (Login Toast - ONCE per session)
+      const hasShownNotificationToast = sessionStorage.getItem(
+        "notificationToastShown"
+      );
+
+      if (!hasShownNotificationToast) {
+        getUnreadNotifications(userId).then((result) => {
+          if (result.success && result.data.length > 0) {
+            const count = result.data.length;
+            toast.info(
+              `You have ${count} unread notification${count > 1 ? "s" : ""}`,
+              {
+                onClick: () => handleSwitchTab("notifications"),
+              }
+            );
+            // Mark as shown for this session
+            sessionStorage.setItem("notificationToastShown", "true");
+          }
+        });
+      }
     }
 
     // Cleanup: Remove theme classes when unmounting (leaving dashboard)
@@ -153,14 +161,25 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   }, [userId]);
 
   const handleProfileUpdate = () => {
-    // Refresh Avatar and User Info
+    // 1. Refresh Avatar/Name from LocalStorage (fast)
     const extras = JSON.parse(
       localStorage.getItem(`user_extras_${userId}`) || "{}"
     );
     if (extras.avatarUrl) setAvatarUrl(extras.avatarUrl);
     if (extras.fullName) setUserName(extras.fullName);
 
-    // Refresh Theme
+    // 2. Fetch Fresh Data from DB (Critical for Location & Roles updates)
+    getCurrentUserProfile(userId).then((result) => {
+      if (result.success) {
+        const dbData = result.data;
+        if (dbData.location) setUserLocation(dbData.location);
+        if (dbData.role)
+          localStorage.setItem("userRoles", JSON.stringify(dbData.role));
+        if (dbData.theme) applyTheme(dbData.theme);
+      }
+    });
+
+    // Refresh Theme locally too
     const savedTheme = localStorage.getItem("theme");
     applyTheme(savedTheme);
 
@@ -257,7 +276,7 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
           </div>
 
           {/* Centered Location and Quotes Section */}
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center w-1/3">
+          <div className="absolute left-[45%] top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center w-1/3">
             <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-2 uppercase tracking-wider">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse ring-2 ring-green-100 dark:ring-green-900"></span>
               {userLocation || "IMS Headquarters"}
@@ -328,6 +347,7 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
       {/* Profile Modal */}
       {showProfileModal && (
         <ProfileModal
+          key={Date.now()} // Force fresh mount every time modal opens
           onClose={() => setShowProfileModal(false)}
           userId={userId}
           onProfileUpdate={handleProfileUpdate}
