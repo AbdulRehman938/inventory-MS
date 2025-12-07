@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { MdLogout, MdPerson, MdFormatQuote } from "react-icons/md";
 import { toast } from "react-toastify";
+import { supabase } from "../lib/supabaseClient";
 import RoleSwitcher from "../components/RoleSwitcher";
 import ProfileModal from "../components/ProfileModal";
 import BiodataModal from "../components/BiodataModal";
@@ -11,6 +12,7 @@ import {
   getCurrentUserProfile,
   getUnreadNotifications,
 } from "../services/userService";
+import { logControllerLogout } from "../services/activityService";
 
 const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   const [activeTabId, setActiveTabId] = useState(sidebarItems?.[0]?.id || null);
@@ -23,6 +25,7 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   const [quote, setQuote] = useState("");
   const [requestsHighlightId, setRequestsHighlightId] = useState(null);
   const [activeReminder, setActiveReminder] = useState(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   const navigate = useNavigate();
   const userId = localStorage.getItem("userId");
@@ -57,6 +60,7 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
     // Default to 'light' (Default Blue) if undefined or null
     const currentTheme = theme || "light";
 
+    // Remove all theme classes first
     document.body.classList.remove(
       "theme-ocean",
       "theme-sunset",
@@ -65,11 +69,13 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
     );
     document.documentElement.classList.remove("dark");
 
+    // Apply the selected theme
     if (currentTheme === "dark") {
       document.documentElement.classList.add("dark");
     } else if (["ocean", "sunset", "forest", "white"].includes(currentTheme)) {
       document.body.classList.add(`theme-${currentTheme}`);
     }
+    // If theme is 'light' or any other value, no special class is added (default Tailwind styling)
   };
 
   useEffect(() => {
@@ -85,9 +91,38 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   }, []);
 
   useEffect(() => {
+    // Handle auto-logout on tab/window close
+    const handleBeforeUnload = async (e) => {
+      const userRole = localStorage.getItem("userRole");
+      const activityLogId = sessionStorage.getItem("activityLogId");
+
+      // Log controller logout if user is a controller
+      if (userRole === "controller" && activityLogId) {
+        // Use sendBeacon for reliable logout tracking even when page is closing
+        const logoutData = JSON.stringify({ log_id: activityLogId });
+
+        // Try to log logout synchronously
+        await logControllerLogout(activityLogId);
+      }
+
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+
+      // Clear storage
+      localStorage.removeItem("isAuthenticated");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userRoles");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("userDetails");
+      sessionStorage.clear();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     // 1. Load theme on mount from LocalStorage first for speed
     const savedTheme = localStorage.getItem("theme");
-    applyTheme(savedTheme);
+    // Apply saved theme or default to 'light' if no theme is saved
+    applyTheme(savedTheme || "light");
 
     // 2. Load User Data & Refresh Roles & Theme from DB
     if (userId) {
@@ -121,9 +156,11 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
               applyTheme(dbData.theme);
             }
           } else {
-            // If no theme in DB, set default 'light'
-            localStorage.setItem("theme", "light");
-            applyTheme("light");
+            // If no theme in DB, set default 'light' and save it
+            if (!savedTheme) {
+              localStorage.setItem("theme", "light");
+              applyTheme("light");
+            }
           }
         }
       });
@@ -150,8 +187,9 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
       }
     }
 
-    // Cleanup: Remove theme classes when unmounting (leaving dashboard)
+    // Cleanup: Remove theme classes and event listener when unmounting
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       document.body.classList.remove(
         "theme-ocean",
         "theme-sunset",
@@ -371,43 +409,66 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
     setShowProfileModal(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Log controller logout if user is a controller
+    const userRole = localStorage.getItem("userRole");
+    if (userRole === "controller") {
+      const activityLogId = sessionStorage.getItem("activityLogId");
+      if (activityLogId) {
+        await logControllerLogout(activityLogId);
+      }
+    }
+
+    // Sign out from Supabase
+    await supabase.auth.signOut();
+
+    // Clear all session and local storage
     localStorage.removeItem("isAuthenticated");
     localStorage.removeItem("userRole");
     localStorage.removeItem("userRoles");
     localStorage.removeItem("userId");
+    localStorage.removeItem("userDetails");
+    sessionStorage.clear();
+
     navigate("/login");
   };
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans dark:bg-slate-900 transition-colors duration-300">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20">
-        <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white">
+      <aside
+        className={`${
+          isSidebarCollapsed ? "w-20" : "w-64"
+        } bg-slate-900 text-white flex flex-col shadow-xl z-20 transition-all duration-300 ease-in-out`}
+        onMouseEnter={() => setIsSidebarCollapsed(false)}
+        onMouseLeave={() => setIsSidebarCollapsed(true)}
+      >
+        <div className={`p-6 border-b border-slate-800 flex items-center ${isSidebarCollapsed ? "justify-center" : "gap-3"} transition-all duration-300`}>
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0">
             IMS
           </div>
-          <div>
-            <h2 className="text-lg font-bold tracking-wide">Inventory MS</h2>
-            <p className="text-xs text-slate-400 capitalize font-medium">
+          <div className={`overflow-hidden transition-all duration-300 ${isSidebarCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+            <h2 className="text-lg font-bold tracking-wide whitespace-nowrap">Inventory MS</h2>
+            <p className="text-xs text-slate-400 capitalize font-medium whitespace-nowrap">
               {role} Dashboard
             </p>
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-6 space-y-1">
+        <nav className="flex-1 overflow-y-auto py-6 space-y-1 overflow-x-hidden">
           {sidebarItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTabId(item.id)}
-              className={`w-full flex items-center px-6 py-3.5 text-left transition-all duration-200 group relative ${
+              className={`w-full flex items-center py-3.5 text-left transition-all duration-200 group relative ${
                 activeTabId === item.id
                   ? "bg-blue-600/10 text-blue-400 border-r-4 border-blue-500"
                   : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-              }`}
+              } ${isSidebarCollapsed ? "justify-center px-0" : "px-6 gap-3"}`}
+              title={isSidebarCollapsed ? item.label : ""}
             >
               <span
-                className={`mr-3 transition-transform duration-200 ${
+                className={`transition-transform duration-200 shrink-0 ${
                   activeTabId === item.id
                     ? "scale-110"
                     : "group-hover:scale-110"
@@ -415,7 +476,9 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
               >
                 {item.icon}
               </span>
-              <span className="font-medium">{item.label}</span>
+              <span className={`font-medium whitespace-nowrap transition-all duration-300 ${isSidebarCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-auto opacity-100"}`}>
+                {item.label}
+              </span>
 
               {/* Active Indicator Glow */}
               {activeTabId === item.id && (
@@ -426,21 +489,22 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
         </nav>
 
         {/* Sidebar Footer with Logout */}
-        <div className="p-4 border-t border-slate-800 space-y-4">
+        <div className="p-4 border-t border-slate-800 space-y-4 overflow-hidden">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center px-4 py-2 text-slate-400 hover:text-white hover:bg-red-600/10 hover:bg-slate-800 rounded-lg transition-colors font-medium text-sm gap-3 group"
+            className={`w-full flex items-center text-slate-400 hover:text-white hover:bg-red-600/10 hover:bg-slate-800 rounded-lg transition-colors font-medium text-sm gap-3 group whitespace-nowrap ${isSidebarCollapsed ? "justify-center px-2 py-2" : "px-4 py-2"}`}
+            title={isSidebarCollapsed ? "Logout" : ""}
           >
-            <MdLogout className="w-5 h-5 group-hover:text-red-500 transition-colors" />
-            <span>Logout</span>
+            <MdLogout className="w-5 h-5 group-hover:text-red-500 transition-colors shrink-0" />
+            <span className={`transition-all duration-300 ${isSidebarCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-auto opacity-100"}`}>Logout</span>
           </button>
 
-          <div className="flex items-center gap-3 px-2 pt-2 border-t border-slate-800/50">
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs text-slate-300">
+          <div className={`flex items-center gap-3 px-2 pt-2 border-t border-slate-800/50 transition-all duration-300 ${isSidebarCollapsed ? "justify-center" : ""}`}>
+            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs text-slate-300 shrink-0">
               {role[0].toUpperCase()}
             </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-medium text-slate-200 truncate capitalise">
+            <div className={`overflow-hidden transition-all duration-300 ${isSidebarCollapsed ? "w-0 opacity-0" : "w-32 opacity-100"}`}>
+              <p className="text-sm font-medium text-slate-200 truncate capitalize">
                 {role}
               </p>
               <p className="text-xs text-slate-500 truncate">Online</p>
@@ -452,7 +516,7 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
       {/* Main Layout Area */}
       <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-slate-800 transition-colors duration-300">
         {/* Header */}
-        <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 h-24 flex items-center justify-between px-8 z-10 sticky top-0 transition-colors duration-300 relative">
+        <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 h-24 flex items-center justify-between px-8 z-10 sticky top-0 transition-colors duration-300">
           <div className="flex items-center">
             <h2 className="text-3xl font-bold text-gray-800 dark:text-white transition-colors tracking-tight">
               {activeItem?.label}
