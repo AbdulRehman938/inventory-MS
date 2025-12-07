@@ -236,9 +236,11 @@ const Login = () => {
         </div>
         {/* Overlay Text */}
         <div className="absolute bottom-8 left-8 text-white z-10 pointer-events-none">
-          <h1 className="text-4xl font-bold mb-2 drop-shadow-lg">
-            Inventory Management System
-          </h1>
+          <img
+            src="/assets/cartgenic-logo.png"
+            alt="CartGenic Logo"
+            className="h-24 mb-4 drop-shadow-2xl"
+          />
           <p className="text-lg opacity-90 drop-shadow-md">
             Manage your inventory with ease and efficiency
           </p>

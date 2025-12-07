@@ -6,6 +6,7 @@ import RoleSwitcher from "../components/RoleSwitcher";
 import ProfileModal from "../components/ProfileModal";
 import BiodataModal from "../components/BiodataModal";
 import NotificationDropdown from "../components/NotificationDropdown";
+import ReminderNotification from "../components/ReminderNotification";
 import {
   getCurrentUserProfile,
   getUnreadNotifications,
@@ -21,6 +22,7 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
   const [userLocation, setUserLocation] = useState("");
   const [quote, setQuote] = useState("");
   const [requestsHighlightId, setRequestsHighlightId] = useState(null);
+  const [activeReminder, setActiveReminder] = useState(null);
 
   const navigate = useNavigate();
   const userId = localStorage.getItem("userId");
@@ -159,6 +161,188 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
       document.documentElement.classList.remove("dark");
     };
   }, [userId]);
+
+  // Reminder Monitoring System - Check every 5 seconds
+  useEffect(() => {
+    const playNotificationSound = () => {
+      try {
+        const audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)();
+        const beepTimes = [0, 0.15, 0.3];
+        const frequencies = [900, 1100, 900];
+
+        beepTimes.forEach((startTime, index) => {
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+
+          oscillator.frequency.value = frequencies[index];
+          oscillator.type = "square";
+
+          const beepStart = audioContext.currentTime + startTime;
+          const beepEnd = beepStart + 0.1;
+
+          gainNode.gain.setValueAtTime(0, beepStart);
+          gainNode.gain.linearRampToValueAtTime(0.4, beepStart + 0.01);
+          gainNode.gain.linearRampToValueAtTime(0, beepEnd);
+
+          oscillator.start(beepStart);
+          oscillator.stop(beepEnd);
+        });
+      } catch (error) {
+        console.log("Could not play alarm:", error);
+      }
+    };
+
+    const checkReminders = () => {
+      const extras = JSON.parse(
+        localStorage.getItem(`user_extras_${userId}`) || "{}"
+      );
+      const reminders = extras.reminders || [];
+      const now = new Date().getTime();
+
+      const dueReminder = reminders.find((r) => {
+        const reminderTime = new Date(r.dateTime).getTime();
+        return reminderTime <= now && reminderTime > now - 10000;
+      });
+
+      if (dueReminder && !activeReminder) {
+        setActiveReminder(dueReminder);
+        playNotificationSound();
+      }
+    };
+
+    checkReminders();
+    const interval = setInterval(checkReminders, 5000);
+    return () => clearInterval(interval);
+  }, [userId, activeReminder]);
+
+  // Repeating Alarm - Every 2 seconds while reminder active
+  useEffect(() => {
+    if (!activeReminder) return;
+
+    const playAlarm = () => {
+      try {
+        const audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)();
+        const beepTimes = [0, 0.15, 0.3];
+        const frequencies = [900, 1100, 900];
+
+        beepTimes.forEach((startTime, index) => {
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+
+          oscillator.frequency.value = frequencies[index];
+          oscillator.type = "square";
+
+          const beepStart = audioContext.currentTime + startTime;
+          const beepEnd = beepStart + 0.1;
+
+          gainNode.gain.setValueAtTime(0, beepStart);
+          gainNode.gain.linearRampToValueAtTime(0.4, beepStart + 0.01);
+          gainNode.gain.linearRampToValueAtTime(0, beepEnd);
+
+          oscillator.start(beepStart);
+          oscillator.stop(beepEnd);
+        });
+      } catch (error) {
+        console.log("Alarm error:", error);
+      }
+    };
+
+    playAlarm();
+    const alarmInterval = setInterval(playAlarm, 2000);
+    return () => clearInterval(alarmInterval);
+  }, [activeReminder]);
+
+  // Cleanup expired reminders from localStorage
+  const cleanupExpiredReminders = () => {
+    const extras = JSON.parse(
+      localStorage.getItem(`user_extras_${userId}`) || "{}"
+    );
+    const now = new Date().getTime();
+
+    console.log("=== CLEANUP START ===");
+    console.log("Current time:", new Date(now).toLocaleString());
+    console.log(
+      "Total reminders before cleanup:",
+      (extras.reminders || []).length
+    );
+
+    const activeReminders = (extras.reminders || []).filter((r) => {
+      const reminderTime = new Date(r.dateTime).getTime();
+      const isActive = reminderTime > now;
+      console.log(
+        `Reminder "${r.text}" at ${new Date(r.dateTime).toLocaleString()} - ${
+          isActive ? "KEEP" : "REMOVE"
+        }`
+      );
+      return isActive;
+    });
+
+    extras.reminders = activeReminders;
+    localStorage.setItem(`user_extras_${userId}`, JSON.stringify(extras));
+    console.log("Active reminders after cleanup:", activeReminders.length);
+    console.log("=== CLEANUP END ===");
+  };
+
+  const handleReminderAcknowledge = () => {
+    const extras = JSON.parse(
+      localStorage.getItem(`user_extras_${userId}`) || "{}"
+    );
+    const updatedReminders = (extras.reminders || []).filter(
+      (r) =>
+        r.dateTime !== activeReminder.dateTime || r.text !== activeReminder.text
+    );
+    extras.reminders = updatedReminders;
+    localStorage.setItem(`user_extras_${userId}`, JSON.stringify(extras));
+
+    setActiveReminder(null);
+    toast.success("Reminder acknowledged and removed");
+    setTimeout(cleanupExpiredReminders, 500);
+  };
+
+  const handleReminderSnooze = () => {
+    const extras = JSON.parse(
+      localStorage.getItem(`user_extras_${userId}`) || "{}"
+    );
+    const updatedReminders = (extras.reminders || []).map((r) => {
+      if (
+        r.dateTime === activeReminder.dateTime &&
+        r.text === activeReminder.text
+      ) {
+        const currentTime = new Date(r.dateTime);
+        const newTime = new Date(currentTime.getTime() + 5 * 60000);
+
+        // Format as local datetime string (YYYY-MM-DDTHH:mm) to match input format
+        const year = newTime.getFullYear();
+        const month = String(newTime.getMonth() + 1).padStart(2, "0");
+        const day = String(newTime.getDate()).padStart(2, "0");
+        const hours = String(newTime.getHours()).padStart(2, "0");
+        const minutes = String(newTime.getMinutes()).padStart(2, "0");
+        const localDateTimeString = `${year}-${month}-${day}T${hours}:${minutes}`;
+
+        console.log("Snoozed to:", newTime.toLocaleString());
+        console.log("Saved as:", localDateTimeString);
+        return { ...r, dateTime: localDateTimeString };
+      }
+      return r;
+    });
+    extras.reminders = updatedReminders;
+    localStorage.setItem(`user_extras_${userId}`, JSON.stringify(extras));
+
+    setActiveReminder(null);
+    const newTime = new Date(
+      new Date(activeReminder.dateTime).getTime() + 5 * 60000
+    );
+    toast.info(`Reminder snoozed to ${newTime.toLocaleTimeString()}`);
+    setTimeout(cleanupExpiredReminders, 500);
+  };
 
   const handleProfileUpdate = () => {
     // 1. Refresh Avatar/Name from LocalStorage (fast)
@@ -362,6 +546,15 @@ const DashboardLayout = ({ role, sidebarItems = [], children }) => {
         <BiodataModal
           onClose={() => setShowBiodataModal(false)}
           userId={userId}
+        />
+      )}
+
+      {/* Reminder Notification */}
+      {activeReminder && (
+        <ReminderNotification
+          reminder={activeReminder}
+          onAcknowledge={handleReminderAcknowledge}
+          onSnooze={handleReminderSnooze}
         />
       )}
     </div>

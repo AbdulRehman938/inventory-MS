@@ -42,6 +42,17 @@
     to { opacity: 1; }
   }
 
+  @keyframes slideInDown {
+    from {
+      opacity: 0;
+      transform: translateY(-100px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   .animate-blob {
     animation: blob 7s infinite;
   }
@@ -66,6 +77,10 @@
     animation: fadeIn 0.3s ease-out forwards;
   }
 
+  .animate-slideInDown {
+    animation: slideInDown 0.5s ease-out forwards;
+  }
+
   /* Custom Scrollbar Hide */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
@@ -78,65 +93,65 @@
 
 /* --- THEME SYSTEM --- */
 
-/* Theme: Ocean */
+/* Theme: Ocean Blue */
 body.theme-ocean {
-    --color-primary: #0ea5e9; /* sky-500 */
-    --color-primary-dark: #0284c7; /* sky-600 */
-    --color-bg: #f0f9ff; /* sky-50 */
-    --color-bg-alt: #e0f2fe; /* sky-100 */
-    --color-text: #0c4a6e; /* sky-900 */
-    --color-text-muted: #0369a1; /* sky-700 */
-    --color-text-active: #0c4a6e; /* sky-900 */
-    --color-border: #bae6fd; /* sky-200 */
+    --color-primary: #0284C7; /* Aqua Blue */
+    --color-primary-dark: #1E3A8A; /* Deep Wave Blue */
+    --color-bg: #E0F2FE; /* Foggy Sea Mist */
+    --color-bg-alt: #38BDF8; /* Light Ocean Accent */
+    --color-text: #0A2540; /* Dark Ocean */
+    --color-text-muted: #1E3A8A; /* Deep Wave Blue */
+    --color-text-active: #0284C7; /* Aqua Blue */
+    --color-border: #38BDF8; /* Light Ocean Accent */
 }
 
-/* Theme: Sunset */
+/* Theme: Sunset Orange */
 body.theme-sunset {
-    --color-primary: #f97316; /* orange-500 */
-    --color-primary-dark: #ea580c; /* orange-600 */
-    --color-bg: #fff7ed; /* orange-50 */
-    --color-bg-alt: #ffedd5; /* orange-100 */
-    --color-text: #7c2d12; /* orange-900 */
-    --color-text-muted: #c2410c; /* orange-700 */
-    --color-text-active: #7c2d12; /* orange-900 */
-    --color-border: #fed7aa; /* orange-200 */
+    --color-primary: #F97316; /* Pure Sunset */
+    --color-primary-dark: #EA580C; /* Hot Orange */
+    --color-bg: #FFF7ED; /* Warm Light Background */
+    --color-bg-alt: #FDBA74; /* Soft Glow Orange */
+    --color-text: #7C2D12; /* Dark Amber */
+    --color-text-muted: #EA580C; /* Hot Orange */
+    --color-text-active: #F97316; /* Pure Sunset */
+    --color-border: #FDBA74; /* Soft Glow Orange */
 }
 
-/* Theme: Forest */
+/* Theme: Forest Green */
 body.theme-forest {
-    --color-primary: #10b981; /* emerald-500 */
-    --color-primary-dark: #059669; /* emerald-600 */
-    --color-bg: #ecfdf5; /* emerald-50 */
-    --color-bg-alt: #d1fae5; /* emerald-100 */
-    --color-text: #064e3b; /* emerald-900 */
-    --color-text-muted: #047857; /* emerald-700 */
-    --color-text-active: #064e3b; /* emerald-900 */
-    --color-border: #a7f3d0; /* emerald-200 */
+    --color-primary: #059669; /* Vibrant Nature Green */
+    --color-primary-dark: #065F46; /* Rich Evergreen */
+    --color-bg: #ECFDF5; /* Soft Mint Background */
+    --color-bg-alt: #34D399; /* Refresh Accent Green */
+    --color-text: #022C22; /* Deep Forest */
+    --color-text-muted: #065F46; /* Rich Evergreen */
+    --color-text-active: #059669; /* Vibrant Nature Green */
+    --color-border: #34D399; /* Refresh Accent Green */
 }
 
 /* Theme: Pure White */
 body.theme-white {
-    --color-primary: #3b82f6; /* Blue-500 */
-    --color-primary-dark: #2563eb; /* Blue-600 */
-    --color-bg: #ffffff; /* White */
-    --color-bg-alt: #f8fafc; /* Slate-50 */
-    --color-text: #0f172a; /* Slate-900 */
-    --color-text-muted: #334155; /* Slate-700 */
-    --color-text-active: #1e293b; /* Slate-800 */
-    --color-border: #e2e8f0; /* Slate-200 */
+    --color-primary: #3B82F6; /* Bright Primary Blue */
+    --color-primary-dark: #1E40AF; /* Royal Blue */
+    --color-bg: #FFFFFF; /* Pure White */
+    --color-bg-alt: #F8FAFC; /* Slightly Warm White */
+    --color-text: #0F172A; /* Deep Navy */
+    --color-text-muted: #1E40AF; /* Royal Blue */
+    --color-text-active: #3B82F6; /* Bright Primary Blue */
+    --color-border: #E2E8F0; /* Soft Neutral Gray */
 }
 
-/* --- GLOBAL DARK MODE FIX - TRUE BLACK --- */
-html.dark .bg-slate-900 { background-color: #000000 !important; }
-html.dark .bg-slate-800 { background-color: #121212 !important; }
+/* --- GLOBAL DARK MODE (TRUE BLACK THEME) --- */
+html.dark .bg-slate-900 { background-color: #000000 !important; } /* Pure Black */
+html.dark .bg-slate-800 { background-color: #0A0A0A !important; } /* Soft Black */
 html.dark .bg-white { 
-    background-color: #121212 !important; 
-    color: #f1f5f9 !important; 
-    border-color: #262626 !important; 
+    background-color: #111827 !important; /* Blue-Black Mix */
+    color: #CBD5E1 !important; 
+    border-color: #374151 !important; /* Neutral Dark Gray */
 }
-html.dark .bg-gray-50 { background-color: #000000 !important; }
-html.dark .text-gray-800, html.dark .text-gray-700 { color: #e2e8f0 !important; }
-html.dark .border-gray-200, html.dark .border-gray-100 { border-color: #262626 !important; }
+html.dark .bg-gray-50 { background-color: #000000 !important; } /* Pure Black */
+html.dark .text-gray-800, html.dark .text-gray-700 { color: #E2E8F0 !important; }
+html.dark .border-gray-200, html.dark .border-gray-100 { border-color: #1E293B !important; } /* Deep Slate */
 
 
 /* --- CUSTOM THEME OVERRIDES --- */
