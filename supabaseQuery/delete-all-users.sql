@@ -9,7 +9,7 @@ DELETE FROM public.profiles;
 DELETE FROM public.otp_verification;
 
 -- Step 3: Delete all users from auth.users
--- Note: This requires admin privileges in Supabase SQL Editor
+-- Note: This requires admin privileges in Supabase SQL Edito
 DELETE FROM auth.users;
 
 -- Verify deletion
