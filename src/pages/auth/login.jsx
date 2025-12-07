@@ -4,6 +4,7 @@ import { toast } from "react-toastify";
 import { supabase } from "../../lib/supabaseClient";
 import Spline from "@splinetool/react-spline";
 import { motion } from "framer-motion";
+import { logControllerLogin } from "../../services/activityService";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -122,7 +123,7 @@ const Login = () => {
     }
   };
 
-  const navigateToRole = (
+  const navigateToRole = async (
     selectedRole,
     allRoles,
     userId,
@@ -152,6 +153,13 @@ const Login = () => {
     console.log("Saving User Details to LocalStorage:", userDetails);
 
     localStorage.setItem("userDetails", JSON.stringify(userDetails));
+
+    // Log controller login activity to database
+    if (selectedRole === "controller") {
+      const userName =
+        profile?.full_name || authUser?.user_metadata?.full_name || "User";
+      await logControllerLogin(authUser?.email, userName);
+    }
 
     toast.success(`Welcome! Logging in as ${selectedRole}`);
 
